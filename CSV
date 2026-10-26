@@ -1,0 +1,6 @@
+sport,entity_type,entity_name,match_date,opponent,stat_name,stat_value
+basketball,player,Sample Player,2026-10-20,Sample Team,points,24
+basketball,player,Sample Player,2026-10-18,Sample Team,points,18
+basketball,player,Sample Player,2026-10-16,Sample Team,points,30
+basketball,player,Sample Player,2026-10-14,Sample Team,points,22
+basketball,player,Sample Player,2026-10-12,Sample Team,points,26
