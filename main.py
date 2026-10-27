@@ -886,3 +886,107 @@ def free_python_providers():
             "message": "Free provider registry could not be loaded.",
             "error_type": type(exc).__name__,
         }
+
+
+# OddsPapi integration (free account key supplied by the project owner).
+# Keep the API key on the server; never expose it to browser JavaScript.
+ODDSPAPI_BASE_URL = "https://api.oddspapi.io/v4"
+
+@app.get("/api/live/oddspapi")
+def oddspapi_live_odds(
+    fixture_id: str = Query(..., min_length=1),
+    bookmaker: str = Query(default="stake"),
+):
+    api_key = os.getenv("ODDSPAPI_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "mode": "api_key_required",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "odds": None,
+            "message": "Create a free OddsPapi account and add its API key to Render as ODDSPAPI_API_KEY.",
+        }
+    allowed = {"stake", "stake.bet.br", "bet365"}
+    if bookmaker not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported bookmaker slug.")
+    params = urllib.parse.urlencode({
+        "fixtureId": fixture_id.strip(),
+        "bookmakers": bookmaker,
+        "apiKey": api_key,
+        "language": "en",
+        "verbosity": 3,
+    })
+    try:
+        data = provider_json(f"{ODDSPAPI_BASE_URL}/odds?{params}", timeout=12)
+        return {
+            "mode": "live_provider",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "fixture_id": fixture_id,
+            "odds": data,
+            "generated_at": now_utc(),
+        }
+    except Exception as exc:
+        return {
+            "mode": "provider_unavailable",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "fixture_id": fixture_id,
+            "odds": None,
+            "message": "OddsPapi live odds request failed; check API key, fixture ID, and free-tier quota.",
+            "error_type": type(exc).__name__,
+            "http_status": getattr(exc, "code", None),
+            "generated_at": now_utc(),
+        }
+
+
+@app.get("/api/live/oddspapi/historical")
+def oddspapi_historical_odds(
+    fixture_id: str = Query(..., min_length=1),
+    bookmaker: str = Query(default="stake"),
+    player_id: int | None = Query(default=None, ge=1),
+):
+    api_key = os.getenv("ODDSPAPI_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "mode": "api_key_required",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "odds": None,
+            "message": "Create a free OddsPapi account and add its API key to Render as ODDSPAPI_API_KEY.",
+        }
+    allowed = {"stake", "stake.bet.br", "bet365"}
+    if bookmaker not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported bookmaker slug.")
+    params = {
+        "fixtureId": fixture_id.strip(),
+        "bookmakers": bookmaker,
+        "apiKey": api_key,
+    }
+    if player_id is not None:
+        params["playerId"] = str(player_id)
+    try:
+        data = provider_json(
+            f"{ODDSPAPI_BASE_URL}/historical-odds?{urllib.parse.urlencode(params)}",
+            timeout=12,
+        )
+        return {
+            "mode": "live_provider",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "fixture_id": fixture_id,
+            "odds": data,
+            "generated_at": now_utc(),
+        }
+    except Exception as exc:
+        return {
+            "mode": "provider_unavailable",
+            "provider": "OddsPapi",
+            "bookmaker": bookmaker,
+            "fixture_id": fixture_id,
+            "odds": None,
+            "message": "OddsPapi historical odds request failed; check API key, fixture ID, and provider response.",
+            "error_type": type(exc).__name__,
+            "http_status": getattr(exc, "code", None),
+            "generated_at": now_utc(),
+        }
