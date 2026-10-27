@@ -870,3 +870,19 @@ def live_player_gamelog(sport: str = Query(...), player_id: str = Query(..., min
         return {"sport": sport_id, "player_id": player_id, "games": games[:limit], "count": min(len(games), limit), "source": "ESPN public game log", "mode": "live_provider"}
     except Exception as exc:
         return {"sport": sport_id, "player_id": player_id, "games": [], "count": 0, "mode": "provider_unavailable", "message": "Player game history could not be loaded.", "error_type": type(exc).__name__}
+
+
+@app.get("/api/live/free-python-providers")
+def free_python_providers():
+    """Report free Python/public data sources and whether optional packages exist."""
+    try:
+        from free_sports_data import provider_status
+        return provider_status()
+    except Exception as exc:
+        return {
+            "sports_listed": 8,
+            "providers": [],
+            "mode": "provider_registry_unavailable",
+            "message": "Free provider registry could not be loaded.",
+            "error_type": type(exc).__name__,
+        }
