@@ -1025,3 +1025,134 @@ def oddspapi_account_status():
             "error_type": type(exc).__name__,
             "message": "OddsPapi account check failed. A 401/403 suggests a key or account-access problem; other errors may indicate provider/network trouble.",
         }
+
+
+# PitchAPI + ParlayAPI integrations for DPP.
+# Secrets are server-side Render environment variables only.
+PITCHAPI_BASE_URL = "https://api.pitchapi.dev"
+PARLAYAPI_BASE_URL = "https://parlay-api.com/v1"
+
+PARLAY_SPORT_KEYS = {
+    "basketball": "basketball_nba",
+    "football": "soccer_epl",
+    "american_football": "americanfootball_nfl",
+    "hockey": "icehockey_nhl",
+    "baseball": "baseball_mlb",
+    "tennis": "tennis_atp",
+}
+
+def provider_json_with_headers(url, headers, timeout=12):
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "DPP/1.0", "Accept": "application/json", **headers},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+@app.get("/api/live/pitchapi/date")
+def pitchapi_matches_by_date(
+    date: str = Query(..., pattern=r"^\\d{4}-\\d{2}-\\d{2}$"),
+    status: str = Query(default="played", pattern="^(played|upcoming|all)$"),
+):
+    """Football match history and fixtures from PitchAPI."""
+    api_key = os.getenv("PITCHAPI_API_KEY", "").strip()
+    if not api_key:
+        return {"provider": "PitchAPI", "mode": "api_key_required", "matches": [], "count": 0, "message": "Add PITCHAPI_API_KEY in the Render backend environment to enable football history and fixtures."}
+    try:
+        params = urllib.parse.urlencode({"status": status})
+        data = provider_json_with_headers(
+            f"{PITCHAPI_BASE_URL}/v1/date/{urllib.parse.quote(date)}?{params}",
+            {"X-API-KEY": api_key},
+        )
+        payload = data.get("data", data)
+        matches = payload.get("matches", []) if isinstance(payload, dict) else []
+        return {"provider": "PitchAPI", "mode": "live_provider", "date": date, "status_filter": status, "matches": matches, "count": len(matches), "generated_at": now_utc()}
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        return {"provider": "PitchAPI", "mode": "provider_auth_error" if code in (401, 403) else "provider_unavailable", "matches": [], "count": 0, "http_status": code, "message": "PitchAPI request failed. Check the server key and requested date.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+
+@app.get("/api/live/pitchapi/match/{match_id}/players")
+def pitchapi_match_players(match_id: str):
+    """Player-level match statistics from PitchAPI."""
+    api_key = os.getenv("PITCHAPI_API_KEY", "").strip()
+    if not api_key:
+        return {"provider": "PitchAPI", "mode": "api_key_required", "players": [], "count": 0}
+    if not match_id.startswith("m_"):
+        raise HTTPException(status_code=400, detail="Use a PitchAPI match ID.")
+    try:
+        data = provider_json_with_headers(
+            f"{PITCHAPI_BASE_URL}/v1/matches/{urllib.parse.quote(match_id, safe='_')}/players",
+            {"X-API-KEY": api_key},
+        )
+        payload = data.get("data", data)
+        players = payload if isinstance(payload, list) else payload.get("players", [])
+        return {"provider": "PitchAPI", "mode": "live_provider", "match_id": match_id, "players": players, "count": len(players), "generated_at": now_utc()}
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        return {"provider": "PitchAPI", "mode": "provider_auth_error" if code in (401, 403) else "provider_unavailable", "players": [], "count": 0, "http_status": code, "message": "Could not load player match statistics.", "error_type": type(exc).__name__}
+
+@app.get("/api/live/pitchapi/player/{player_id}")
+def pitchapi_player_profile(player_id: str):
+    """Resolve a PitchAPI player ID to profile details."""
+    api_key = os.getenv("PITCHAPI_API_KEY", "").strip()
+    if not api_key:
+        return {"provider": "PitchAPI", "mode": "api_key_required", "player": None}
+    if not player_id.startswith("p_"):
+        raise HTTPException(status_code=400, detail="Use a PitchAPI player ID.")
+    try:
+        data = provider_json_with_headers(
+            f"{PITCHAPI_BASE_URL}/v1/players/{urllib.parse.quote(player_id, safe='_')}",
+            {"X-API-KEY": api_key},
+        )
+        return {"provider": "PitchAPI", "mode": "live_provider", "player": data.get("data", data), "generated_at": now_utc()}
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        return {"provider": "PitchAPI", "mode": "provider_auth_error" if code in (401, 403) else "provider_unavailable", "player": None, "http_status": code, "message": "Could not load the player profile.", "error_type": type(exc).__name__}
+
+@app.get("/api/live/parlayapi/props")
+def parlayapi_player_props(
+    sport: str = Query(default="basketball"),
+    player: str = Query(default=""),
+    markets: str = Query(default=""),
+    bookmakers: str = Query(default=""),
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    """Verified live player-prop lines from ParlayAPI; one request costs 3 credits."""
+    sport_id = validate_sport(sport)
+    api_key = os.getenv("PARLAYAPI_API_KEY", "").strip()
+    sport_key = PARLAY_SPORT_KEYS.get(sport_id)
+    if not api_key:
+        return {"provider": "ParlayAPI", "mode": "api_key_required", "sport": sport_id, "props": [], "count": 0, "message": "Add PARLAYAPI_API_KEY to the Render backend environment to enable real player prop lines."}
+    if not sport_key:
+        raise HTTPException(status_code=400, detail="Unsupported sport.")
+    params = {"limit": str(limit)}
+    if player.strip():
+        params["player"] = player.strip()
+    if markets.strip():
+        params["markets"] = markets.strip()
+    if bookmakers.strip():
+        params["bookmakers"] = bookmakers.strip()
+    try:
+        data = provider_json_with_headers(
+            f"{PARLAYAPI_BASE_URL}/sports/{urllib.parse.quote(sport_key)}/props?{urllib.parse.urlencode(params)}",
+            {"X-API-Key": api_key},
+        )
+        rows = data if isinstance(data, list) else data.get("data", data.get("props", []))
+        if isinstance(rows, dict):
+            rows = rows.get("props", rows.get("rows", []))
+        rows = rows if isinstance(rows, list) else []
+        return {"provider": "ParlayAPI", "mode": "live_provider", "sport": sport_id, "sport_key": sport_key, "props": rows, "count": len(rows), "credit_cost_note": "ParlayAPI documents 3 credits per props request; avoid frequent polling on the 1,000-credit free tier.", "generated_at": now_utc()}
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        return {"provider": "ParlayAPI", "mode": "provider_auth_error" if code in (401, 403) else "provider_unavailable", "sport": sport_id, "props": [], "count": 0, "http_status": code, "message": "ParlayAPI request failed. Check key, sport coverage, and remaining credits.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+
+@app.get("/api/live/new-provider-status")
+def new_provider_status():
+    return {
+        "providers": [
+            {"name": "PitchAPI", "purpose": "football fixtures, historical matches, events, shots, player stats and advanced analytics", "configured": bool(os.getenv("PITCHAPI_API_KEY", "").strip()), "environment_variable": "PITCHAPI_API_KEY", "key_required": True, "documented_cost": "Free"},
+            {"name": "ParlayAPI", "purpose": "live player props and over/under odds", "configured": bool(os.getenv("PARLAYAPI_API_KEY", "").strip()), "environment_variable": "PARLAYAPI_API_KEY", "key_required": True, "documented_free_credits_per_month": 1000, "documented_props_call_cost": 3},
+        ],
+        "security": "API keys remain on the backend and are never returned to browser clients.",
+        "generated_at": now_utc(),
+    }
