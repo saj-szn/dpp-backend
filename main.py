@@ -1102,16 +1102,48 @@ def _research_sportscore(sport_id, player_query):
         "football": "football",
         "basketball": "basketball",
         "tennis": "tennis",
-        "baseball": "baseball",
-        "hockey": "football",
-        "american_football": "football",
     }
-    public_sport = sport_map.get(sport_id, "football")
+    public_sport = sport_map.get(sport_id)
+    if not public_sport:
+        return {
+            "status": "unsupported_sport",
+            "source": "SportScore",
+            "message": "SportScore's documented player-search API currently covers football, basketball, cricket, and tennis.",
+        }
     params = urllib.parse.urlencode({"q": player_query.strip(), "sport": public_sport, "limit": 8, "src": "d-players-props"})
     data = _research_http_json("https://sportscore.com/api/v1/search/?" + params)
-    # Keep the provider's actual search envelope; its groups can vary by sport.
-    return {"status": "available", "source": "SportScore", "results": data}
-
+    payload = data.get("data", data) if isinstance(data, dict) else data
+    groups = payload.get("players", []) if isinstance(payload, dict) else []
+    if not groups and isinstance(payload, dict):
+        groups = payload.get("results", [])
+        if isinstance(groups, dict):
+            groups = groups.get("players", [])
+    if isinstance(groups, dict):
+        groups = groups.get("items", [])
+    candidates = [item for item in groups if isinstance(item, dict)]
+    query_lower = player_query.strip().casefold()
+    candidates.sort(key=lambda item: 0 if str(item.get("name") or item.get("title") or "").casefold() == query_lower else 1)
+    profile = None
+    selected = None
+    for item in candidates:
+        slug = item.get("slug") or item.get("player_slug") or item.get("url_slug")
+        name = item.get("name") or item.get("title") or ""
+        if not slug:
+            continue
+        selected = {"name": name, "slug": slug, "source": "SportScore"}
+        profile_params = urllib.parse.urlencode({"sport": public_sport, "slug": str(slug), "src": "d-players-props"})
+        try:
+            profile = _research_http_json("https://sportscore.com/api/widget/player/?" + profile_params)
+        except Exception:
+            profile = None
+        break
+    return {
+        "status": "available" if data else "no_match",
+        "source": "SportScore",
+        "search_results": data,
+        "matched_player": selected,
+        "player_profile": profile,
+    }
 
 def _research_pitchapi(pitch_player_id):
     api_key = os.getenv("PITCHAPI_API_KEY", "").strip()
