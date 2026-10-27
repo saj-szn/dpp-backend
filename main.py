@@ -685,3 +685,27 @@ def live_matches(sport: str = Query(...), date: str = Query(default="")):
         return {"sport": sport_id, "matches": results, "source": "ESPN public scoreboard", "mode": "live_provider", "count": len(results), "generated_at": now_utc()}
     except Exception as exc:
         return {"sport": sport_id, "matches": [], "source": "ESPN public scoreboard", "mode": "provider_unavailable", "count": 0, "message": "The scoreboard provider could not be reached. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+
+
+@app.get("/api/live/roster")
+def live_roster(sport: str = Query(...), team_id: str = Query(..., min_length=1)):
+    sport_id = validate_sport(sport)
+    category, league = PROVIDER_SPORTS[sport_id]
+    if not league:
+        return {"sport": sport_id, "players": [], "mode": "unsupported_provider_sport"}
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{category}/{league}/teams/{urllib.parse.quote(team_id)}/roster"
+    try:
+        data = provider_json(url)
+        athletes = data.get("athletes") or []
+        if athletes and isinstance(athletes[0], dict) and "items" in athletes[0]:
+            athletes = [p for group in athletes for p in (group.get("items") or [])]
+        players = []
+        for p in athletes:
+            if not (p.get("fullName") or p.get("displayName")):
+                continue
+            position = p.get("position") or {}
+            headshot = p.get("headshot") or {}
+            players.append({"id": str(p.get("id") or ""), "name": p.get("fullName") or p.get("displayName"), "position": position.get("abbreviation", "") if isinstance(position, dict) else str(position), "jersey": p.get("jersey") or "", "headshot": headshot.get("href", "") if isinstance(headshot, dict) else "", "source": "ESPN roster"})
+        return {"sport": sport_id, "team_id": team_id, "players": players, "count": len(players), "source": "ESPN roster", "mode": "live_provider"}
+    except Exception as exc:
+        return {"sport": sport_id, "team_id": team_id, "players": [], "count": 0, "mode": "provider_unavailable", "message": "Team roster could not be loaded.", "error_type": type(exc).__name__}
