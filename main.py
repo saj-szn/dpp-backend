@@ -745,11 +745,23 @@ def live_player_props(
     sport_key = sport_keys.get(sport_id)
     api_key = os.getenv("ODDS_API_KEY", "").strip()
     if not api_key:
+        # Free-data fallback: never invent sportsbook prices or betting lines.
+        # DPP can still use its public ESPN/TheSportsDB feeds for fixtures,
+        # rosters, game logs, and user-selected prop analysis where stats exist.
+        free_markets = {
+            "basketball": ["points", "rebounds", "assists", "three_pointers_made", "blocks", "steals", "turnovers", "points_rebounds_assists", "personal_fouls"],
+            "football": ["goals", "assists", "shots", "shots_on_target", "tackles", "fouls_committed", "yellow_cards", "red_cards", "offsides", "corners_won", "free_kicks", "goalkeeper_saves"],
+            "american_football": ["passing_yards", "passing_touchdowns", "rushing_yards", "receptions", "receiving_yards", "anytime_touchdown", "interceptions", "tackles"],
+            "hockey": ["goals", "assists", "points", "shots_on_goal", "blocked_shots", "goalie_saves", "penalty_minutes"],
+            "baseball": ["hits", "total_bases", "home_runs", "runs_batted_in", "runs_scored", "pitcher_strikeouts", "pitcher_outs"],
+            "tennis": ["aces", "double_faults", "games_won", "sets_won", "break_points_won"],
+        }
         return {
             "sport": sport_id, "props": [], "count": 0,
-            "mode": "needs_api_key",
-            "provider": "The Odds API",
-            "message": "Configure ODDS_API_KEY in Render environment variables. Player props require an eligible provider plan."
+            "mode": "free_data_only",
+            "provider": "ESPN public endpoints + TheSportsDB public test key",
+            "available_markets": free_markets.get(sport_id, []),
+            "message": "Free sports feeds are available for fixtures, rosters, and some player statistics. No verified sportsbook lines or prices are available without a bookmaker odds feed. DPP will not invent lines; use available historical stats to analyze a manually entered line."
         }
     if not sport_key:
         raise HTTPException(status_code=400, detail="Unsupported sport")
@@ -810,7 +822,9 @@ def live_provider_status():
     return {
         "providers": [
             {"name": "ESPN", "purpose": "fixtures, scores, rosters, game logs", "authentication": "public endpoint", "configured": True},
-            {"name": "The Odds API", "purpose": "real sportsbook player props and prices", "configured": bool(os.getenv("ODDS_API_KEY", "").strip()), "required_environment_variable": "ODDS_API_KEY", "note": "Player props require an eligible plan."},
+            {"name": "The Odds API", "purpose": "optional sportsbook player props and prices", "configured": bool(os.getenv("ODDS_API_KEY", "").strip()), "required_environment_variable": "ODDS_API_KEY", "note": "Optional only. DPP uses free public feeds when no odds key is configured; free feeds do not guarantee sportsbook lines."},
+            {"name": "ESPN public endpoints", "purpose": "free fixtures, scores, rosters, and some player game logs", "configured": True, "authentication": "none", "note": "Unofficial public endpoints; availability and coverage vary."},
+            {"name": "TheSportsDB public test key", "purpose": "free supplementary player and team lookup", "configured": True, "authentication": "public test key 123", "note": "Free tier has endpoint limits."},
             {"name": "NBA Stat API", "purpose": "NBA player statistics and historical logs", "configured": bool(os.getenv("NBASTAT_API_TOKEN", "").strip()), "required_environment_variable": "NBASTAT_API_TOKEN", "note": "Review provider terms; documented use is personal, non-commercial."},
             {"name": "TheSportsDB", "purpose": "supplementary player/team directory", "configured": True},
         ],
