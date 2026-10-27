@@ -990,3 +990,38 @@ def oddspapi_historical_odds(
             "http_status": getattr(exc, "code", None),
             "generated_at": now_utc(),
         }
+
+
+@app.get("/api/live/oddspapi/account")
+def oddspapi_account_status():
+    """Verify the configured OddsPapi key without returning or logging the secret."""
+    api_key = os.getenv("ODDSPAPI_API_KEY", "").strip()
+    if not api_key:
+        return {"provider": "OddsPapi", "mode": "api_key_required", "accepted": False, "message": "ODDSPAPI_API_KEY is not configured on the server."}
+    params = urllib.parse.urlencode({"apiKey": api_key})
+    try:
+        data = provider_json(f"{ODDSPAPI_BASE_URL}/account?{params}", timeout=12)
+        if not isinstance(data, dict):
+            return {"provider": "OddsPapi", "mode": "unexpected_response", "accepted": False, "message": "OddsPapi returned an unexpected response format."}
+        # Return only non-secret account status fields; never relay arbitrary response data.
+        safe = {
+            "provider": "OddsPapi",
+            "mode": "account_checked",
+            "accepted": True,
+            "is_active": data.get("is_active", data.get("isActive")),
+            "request_limit": data.get("request_limit", data.get("requestLimit")),
+            "request_count": data.get("request_count", data.get("requestCount")),
+            "has_player_props": data.get("has_player_props", data.get("hasPlayerProps")),
+            "message": "OddsPapi accepted the key and returned account information.",
+        }
+        return safe
+    except Exception as exc:
+        status = getattr(exc, "code", None)
+        return {
+            "provider": "OddsPapi",
+            "mode": "provider_rejected_or_unavailable",
+            "accepted": False if status in (401, 403) else None,
+            "http_status": status,
+            "error_type": type(exc).__name__,
+            "message": "OddsPapi account check failed. A 401/403 suggests a key or account-access problem; other errors may indicate provider/network trouble.",
+        }
