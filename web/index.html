@@ -199,6 +199,38 @@ body.dpp-detail-mode #dppWorkspace{background:#f3f4f5!important;color:#22272d!im
 #dppWorkspace .prop-card .prop-history{font-size:12px;margin:8px 0 0}
 @media(max-width:560px){#dppWorkspace .recent-games-grid{gap:4px;grid-template-columns:repeat(5,minmax(55px,1fr))}#dppWorkspace .recent-game{padding:8px 3px}#dppWorkspace .recent-game small{font-size:10px}#dppWorkspace .recent-game b{font-size:17px}}
 
+
+/* DPP professional sports research desk: remove toy-like promotional chrome */
+.sports-ticker,.editorial-grid,.player-spotlight,.hero-visual{display:none!important}
+.hero{padding:20px 0 12px}
+.hero h2{font-size:clamp(25px,3vw,34px);letter-spacing:-.7px;font-weight:750}
+.hero p{max-width:760px;font-size:14px}
+.eyebrow{font-size:10px;letter-spacing:1.2px}
+#sportCards{margin-top:12px}
+.sport-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.sport-card{min-height:70px!important;padding:12px!important;border-radius:3px!important;background:#fff!important;border:1px solid #d9dde1!important;color:#252b31!important;box-shadow:none!important;transition:none!important}
+.sport-card .emoji{font-size:19px!important;filter:grayscale(1)}
+.sport-card b{font-size:12px!important;font-weight:700}
+.sport-card small,.sport-card:after{display:none!important}
+.sport-card:hover,.sport-card:active{transform:none!important;border-color:#858d95!important}
+#dppWorkspace{border-radius:3px!important;padding:18px!important}
+#dppWorkspace .workspace-title{font-size:24px!important;font-weight:750;letter-spacing:-.4px}
+#dppWorkspace .workspace-actions{border-bottom:1px solid #d9dde1;padding-bottom:12px;gap:0}
+#dppWorkspace .workspace-actions button{border-radius:2px!important;font-size:12px;font-weight:650;padding:9px 13px}
+#dppWorkspace .workspace-actions button.active{background:#e9ecef!important;color:#20262c!important;border-color:#9da5ad!important}
+#dppWorkspace .workspace-card{border-radius:3px!important;box-shadow:none!important}
+#dppWorkspace .prop-card{border-radius:3px!important;box-shadow:none!important;padding:16px!important}
+#dppWorkspace .prop-card h4{font-size:15px;font-weight:750}
+#dppWorkspace .prop-line{border-top:0;margin-top:0;padding-top:0;gap:18px}
+#dppWorkspace .prop-line b{color:#22272d!important}
+#dppWorkspace .recent-game{border-radius:0!important;background:#f5f6f7!important;border-color:#d9dde1!important}
+#dppWorkspace .recent-game b{color:#22272d!important}
+#dppWorkspace .workspace-table table{min-width:680px}
+#dppWorkspace .workspace-table th{background:#f3f4f5;font-size:11px;text-transform:uppercase;letter-spacing:.45px}
+#dppWorkspace .workspace-table td{font-variant-numeric:tabular-nums}
+@media(max-width:760px){.sport-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.sport-card{min-height:66px!important}#dppWorkspace{padding:13px!important}}
+@media(max-width:420px){.sport-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 </style>
 </head>
 <body><main class="shell">
@@ -331,7 +363,7 @@ $('getLiveProps').onclick=async()=>{const sport=$('propSport').value,market=$('p
  let sport='basketball', tab='matches', matchCache=[], teamCache=[], playerCache=[], selectedPlayer=null, selectedTeam=null;
  const statNames={basketball:['points','rebounds','assists','steals','blocks','turnovers','three-pointers','minutes'],soccer:['goals','assists','shots','shots on target','passes','tackles','fouls','yellow cards','red cards','penalty kicks','free kicks'],football:['goals','assists','shots','shots on target','passes','tackles','fouls','yellow cards','red cards','penalty kicks','free kicks'],american_football:['passing yards','rushing yards','receiving yards','receptions','touchdowns','interceptions','tackles'],hockey:['goals','assists','shots on goal','saves','blocked shots','penalty minutes'],baseball:['hits','runs','home runs','RBIs','strikeouts','total bases','pitcher outs'],tennis:['aces','double faults','games won','sets won','break points']};
  function safe(v){return esc(v===undefined||v===null?'—':String(v))}
- function rows(d){if(Array.isArray(d))return d;for(const k of ['matches','events','players','teams','results','items','data','records','props'])if(Array.isArray(d?.[k]))return d[k];return []}
+ function rows(d){if(Array.isArray(d))return d;for(const k of ['matches','events','players','teams','results','items','data','records','props','games'])if(Array.isArray(d?.[k]))return d[k];return []}
  function content(s){W('workspaceContent').innerHTML=s}
  function openDetail(){document.body.classList.add('dpp-detail-mode');W('dppWorkspace').scrollTop=0}
  function closeDetail(){document.body.classList.remove('dpp-detail-mode')}
@@ -340,7 +372,7 @@ $('getLiveProps').onclick=async()=>{const sport=$('propSport').value,market=$('p
  async function request(path){return await api(path)}
  function card(title,sub,attrs=''){return '<button class="workspace-card" '+attrs+'><b>'+safe(title)+'</b><small>'+safe(sub)+'</small></button>'}
  function matchup(m){return [m.away_team||m.awayTeam||m.away||'Away',m.home_team||m.homeTeam||m.home||'Home'].join(' @ ')}
- async function loadSport(){sport=W('workspaceSport').value||'basketball';W('workspaceProvider').textContent='Loading '+sportLabel(sport)+'…';content('<p class="sub">Loading '+safe(sportLabel(sport))+' data…</p>');try{const d=await request('/api/live/matches?'+new URLSearchParams({sport,date:localDateKey(0)+'-'+localDateKey(7)}));matchCache=rows(d);W('workspaceProvider').textContent=d.mode==='live_provider'?'Live feed connected':'Fixtures available when provider supports this sport';if(!matchCache.length){content('<p class="sub">No matches returned for this sport right now. You can still open Players or Teams and search the available directory.</p>')}activeTab(tab)}catch(e){W('workspaceProvider').textContent='Provider status unknown';content('<p class="sub workspace-error">Could not load matches: '+safe(e.message)+'</p>')}}
+ async function loadSport(){sport=W('workspaceSport').value||'basketball';W('workspaceProvider').textContent='Loading '+sportLabel(sport)+'…';content('<p class="sub">Loading '+safe(sportLabel(sport))+' data…</p>');try{const d=await request('/api/live/matches?'+new URLSearchParams({sport,date:localDateKey(0)+'-'+localDateKey(6)}));matchCache=rows(d);W('workspaceProvider').textContent=d.mode==='live_provider'?'Live feed connected':'Fixtures available when provider supports this sport';if(!matchCache.length){content('<p class="sub">No matches returned for this sport right now. You can still open Players or Teams and search the available directory.</p>')}activeTab(tab)}catch(e){W('workspaceProvider').textContent='Provider status unknown';content('<p class="sub workspace-error">Could not load matches: '+safe(e.message)+'</p>')}}
  async function loadTeams(){try{const d=await request('/api/teams?sport='+encodeURIComponent(sport));teamCache=rows(d);if(!teamCache.length){const m=matchCache.flatMap(x=>[{id:x.away_team_id,name:x.away_team},{id:x.home_team_id,name:x.home_team}]).filter(x=>x.name);teamCache=m.filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i)}return d}catch(e){teamCache=[];throw e}}
  async function loadPlayers(){try{const d=await request('/api/live/players?'+new URLSearchParams({sport,q:W('workspaceSearch')?.value||'a'}));playerCache=rows(d);return d}catch(e){playerCache=[];throw e}}
  function renderTab(){if(tab==='matches'){content(matchCache.length?'<div class="workspace-list">'+matchCache.map((m,i)=>card(matchup(m),[m.date?new Date(m.date).toLocaleString():'Time TBA',m.status||'Fixture'].join(' • '),'data-wmatch="'+i+'"')).join('')+'</div>':'<p class="sub">No match list loaded yet. Tap Open sport, or try another sport.</p>');W('workspaceContent').querySelectorAll('[data-wmatch]').forEach(b=>b.onclick=()=>{const m=matchCache[+b.dataset.wmatch];selectedTeam=null;content('<div class="crumbs">Sports / '+safe(sportLabel(sport))+' / '+safe(matchup(m))+'</div><h3>Choose a team</h3><div class="workspace-list">'+[{id:m.away_team_id,name:m.away_team},{id:m.home_team_id,name:m.home_team}].filter(x=>x.name).map((t,i)=>card(t.name,'Open team history and roster','data-wteam="'+i+'"')).join('')+'</div><div id="matchTeamResult"></div>');W('workspaceContent').querySelectorAll('[data-wteam]').forEach(b=>b.onclick=()=>openTeam([{id:m.away_team_id,name:m.away_team},{id:m.home_team_id,name:m.home_team}].filter(x=>x.name)[+b.dataset.wteam]))})}
