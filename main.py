@@ -1025,3 +1025,230 @@ def oddspapi_account_status():
             "error_type": type(exc).__name__,
             "message": "OddsPapi account check failed. A 401/403 suggests a key or account-access problem; other errors may indicate provider/network trouble.",
         }
+
+
+# Unified multi-provider player research.
+# Each source fails independently: one provider outage must not hide other results.
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def _research_http_json(url, headers=None, timeout=6):
+    request_headers = {
+        "User-Agent": "DPlayersProps/1.0 (multi-provider player research)",
+        "Accept": "application/json",
+    }
+    if headers:
+        request_headers.update(headers)
+    request = urllib.request.Request(url, headers=request_headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _research_local_history(sport_id, player_query, count):
+    with connect_db() as db:
+        rows = db.execute(
+            """
+            SELECT entity_name, match_date, opponent, stat_name, stat_value
+            FROM stats
+            WHERE sport = ?
+              AND entity_type = 'player'
+              AND entity_name LIKE ?
+            ORDER BY match_date DESC, id DESC
+            LIMIT ?
+            """,
+            (sport_id, "%" + player_query.strip() + "%", min(count * 12, 200)),
+        ).fetchall()
+    records = [
+        {
+            "player": row["entity_name"],
+            "date": row["match_date"],
+            "opponent": row["opponent"],
+            "stat_name": row["stat_name"],
+            "value": row["stat_value"],
+            "source": "DPP database",
+        }
+        for row in rows
+    ]
+    return {
+        "status": "available" if records else "no_saved_history",
+        "count": len(records),
+        "records": records,
+        "message": "Previously stored DPP records." if records else "No matching player history is stored yet.",
+    }
+
+
+def _research_thesportsdb(sport_id, player_query):
+    params = urllib.parse.urlencode({"p": player_query.strip()})
+    url = "https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?" + params
+    data = _research_http_json(url)
+    players = [
+        {
+            "id": str(p.get("idPlayer") or ""),
+            "name": p.get("strPlayer") or "",
+            "team": p.get("strTeam") or "",
+            "sport": p.get("strSport") or SPORTS[sport_id],
+            "nationality": p.get("strNationality") or "",
+            "position": p.get("strPosition") or "",
+            "date_of_birth": p.get("dateBorn") or "",
+            "source": "TheSportsDB",
+        }
+        for p in (data.get("player") or [])
+        if p.get("strPlayer")
+    ]
+    return {"status": "available" if players else "no_match", "count": len(players), "players": players, "source": "TheSportsDB"}
+
+
+def _research_sportscore(sport_id, player_query):
+    sport_map = {
+        "football": "football",
+        "basketball": "basketball",
+        "tennis": "tennis",
+        "baseball": "baseball",
+        "hockey": "football",
+        "american_football": "football",
+    }
+    public_sport = sport_map.get(sport_id, "football")
+    params = urllib.parse.urlencode({"q": player_query.strip(), "sport": public_sport, "limit": 8, "src": "d-players-props"})
+    data = _research_http_json("https://sportscore.com/api/v1/search/?" + params)
+    # Keep the provider's actual search envelope; its groups can vary by sport.
+    return {"status": "available", "source": "SportScore", "results": data}
+
+
+def _research_pitchapi(pitch_player_id):
+    api_key = os.getenv("PITCHAPI_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "status": "api_key_required",
+            "source": "PitchAPI",
+            "message": "PitchAPI is free, but requires a free API key stored server-side as PITCHAPI_API_KEY.",
+        }
+    if not pitch_player_id:
+        return {
+            "status": "player_id_needed",
+            "source": "PitchAPI",
+            "message": "PitchAPI player profiles use their own player ID. Automatic name-to-ID matching still needs an identity mapping.",
+        }
+    encoded_id = urllib.parse.quote(pitch_player_id.strip(), safe="")
+    data = _research_http_json(
+        "https://api.pitchapi.dev/v1/players/" + encoded_id,
+        headers={"X-API-KEY": api_key},
+    )
+    return {"status": "available", "source": "PitchAPI", "profile": data.get("data", data)}
+
+
+def _research_parlayapi(sport_id, player_query):
+    api_key = os.getenv("PARLAY_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "status": "api_key_required",
+            "source": "ParlayAPI",
+            "message": "ParlayAPI requires its free account key. Store it on the server as PARLAY_API_KEY; never put it in the mobile app.",
+            "props": [],
+        }
+    sport_keys = {
+        "basketball": "nba",
+        "american_football": "nfl",
+        "hockey": "nhl",
+        "baseball": "mlb",
+        "football": "soccer_epl",
+        "tennis": "tennis",
+    }
+    sport_key = sport_keys.get(sport_id)
+    if not sport_key:
+        return {"status": "unsupported_sport", "source": "ParlayAPI", "props": []}
+    params = urllib.parse.urlencode({"player": player_query.strip(), "limit": 100})
+    url = "https://api.parlay-api.com/v1/sports/" + urllib.parse.quote(sport_key, safe="") + "/props?" + params
+    data = _research_http_json(url, headers={"X-API-Key": api_key})
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = data.get("data") or data.get("props") or data.get("results") or []
+    else:
+        rows = []
+    # Return provider-sourced rows only; never generate fictional bookmaker lines.
+    return {"status": "available" if rows else "no_matching_props", "source": "ParlayAPI", "sport_key": sport_key, "count": len(rows), "props": rows[:100]}
+
+
+def _research_espn_gamelog(sport_id, espn_player_id, count):
+    if not espn_player_id:
+        return {"status": "player_id_needed", "source": "ESPN public game log", "games": []}
+    category, league = PROVIDER_SPORTS[sport_id]
+    if not league:
+        return {"status": "unsupported_sport", "source": "ESPN public game log", "games": []}
+    url = "https://site.web.api.espn.com/apis/common/v3/sports/{}/{}/athletes/{}/gamelog".format(
+        category, league, urllib.parse.quote(espn_player_id.strip(), safe="")
+    )
+    data = _research_http_json(url)
+    games = data.get("events") or data.get("gamelog") or data.get("seasonTypes") or []
+    return {"status": "available" if games else "no_history", "source": "ESPN public game log", "count": min(len(games), count), "games": games[:count]}
+
+
+@app.get("/api/player/research")
+def unified_player_research(
+    sport: str = Query(...),
+    q: str = Query(..., min_length=2, max_length=100),
+    count: int = Query(default=10, ge=1, le=20),
+    pitch_player_id: str = Query(default=""),
+    espn_player_id: str = Query(default=""),
+):
+    """
+    Search all configured public providers in one request and return partial results
+    with source labels. pitch_player_id / espn_player_id are optional provider IDs;
+    no IDs are guessed across providers.
+    """
+    sport_id = validate_sport(sport)
+    tasks = {
+        "dpp_history": lambda: _research_local_history(sport_id, q, count),
+        "thesportsdb": lambda: _research_thesportsdb(sport_id, q),
+        "sportscore": lambda: _research_sportscore(sport_id, q),
+        "pitchapi": lambda: _research_pitchapi(pitch_player_id),
+        "parlayapi": lambda: _research_parlayapi(sport_id, q),
+        "espn_gamelog": lambda: _research_espn_gamelog(sport_id, espn_player_id, count),
+    }
+    sources = {}
+    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+        futures = {executor.submit(fn): name for name, fn in tasks.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                sources[name] = future.result()
+            except Exception as exc:
+                status = getattr(exc, "code", None)
+                sources[name] = {
+                    "status": "provider_unavailable",
+                    "source": name,
+                    "message": "This source failed; results from other sources are still returned.",
+                    "error_type": type(exc).__name__,
+                    "http_status": status,
+                }
+    available = sum(1 for value in sources.values() if value.get("status") == "available")
+    return {
+        "sport": sport_id,
+        "player_query": q.strip(),
+        "generated_at": now_utc(),
+        "mode": "multi_provider_partial_results",
+        "providers_responding": available,
+        "providers_checked": len(sources),
+        "sources": sources,
+        "notes": [
+            "Only provider-sourced lines are shown as bookmaker props; DPP does not invent sportsbook lines.",
+            "Provider IDs are not interchangeable. Supply a PitchAPI or ESPN player ID when available.",
+            "A provider's missing field does not imply the player has a zero value.",
+            "SportScore attribution must be shown in the app: Powered by SportScore.",
+        ],
+    }
+
+
+@app.get("/api/player/research/status")
+def unified_player_research_status():
+    return {
+        "providers": [
+            {"name": "DPP local history", "configured": True, "credentials_required": False},
+            {"name": "TheSportsDB", "configured": True, "credentials_required": False},
+            {"name": "SportScore", "configured": True, "credentials_required": False, "attribution_required": True},
+            {"name": "PitchAPI", "configured": bool(os.getenv("PITCHAPI_API_KEY", "").strip()), "credentials_required": True, "environment_variable": "PITCHAPI_API_KEY"},
+            {"name": "ParlayAPI", "configured": bool(os.getenv("PARLAY_API_KEY", "").strip()), "credentials_required": True, "environment_variable": "PARLAY_API_KEY"},
+            {"name": "ESPN public game log", "configured": True, "player_id_required": True},
+        ],
+        "generated_at": now_utc(),
+        "live_backend_changed": False,
+    }
