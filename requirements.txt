@@ -1,8 +1,5 @@
 fastapi
 uvicorn[standard]
 python-multipart
-# Optional free sports-data packages
-sportsipy
-pybaseball
-nfl_data_py
-hockey_scraper
+setuptools<81
+sportsipy==0.6.0
