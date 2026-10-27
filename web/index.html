@@ -86,10 +86,60 @@ body.dpp-detail-mode #workspaceBack{display:inline-flex}
 #dppWorkspace .prop-odds b{display:block;font-size:18px;margin-top:4px}
 #dppWorkspace .detail-back{margin-bottom:12px}
 @media(max-width:480px){#dppWorkspace .prop-card{padding:12px}#dppWorkspace .prop-odds{gap:5px}#dppWorkspace .prop-odds b{font-size:16px}}
+
+/* DPP refined visual system: premium sports editorial, light surfaces, low-cost CSS depth */
+:root{color-scheme:light;--bg:#eef1f4;--panel:#fff;--panel2:#f6f8fa;--line:#dce2e8;--muted:#657180;--text:#18212b;--accent:#176b54;--green:#16845f;--red:#b33b45}
+body{background:linear-gradient(135deg,#f3f5f7 0%,#e7edf1 52%,#f7f8fa 100%);color:var(--text)}
+.shell{max-width:1180px}
+.top{justify-content:center;min-height:112px;padding:14px 0 20px;border-bottom:1px solid #d6dde4}
+.brand{flex-direction:column;gap:6px;text-align:center;align-items:center}
+.brand h1{font-size:20px;letter-spacing:2.2px;font-weight:900;color:#17252e}
+.brand p{color:#667482}
+.logo{width:55px;height:55px;border-radius:16px;background:linear-gradient(145deg,#fff 0%,#d7e5e1 35%,#176b54 100%);color:#0d4437;box-shadow:0 8px 18px #163d3322,inset 0 1px 2px #ffffffcc;border:1px solid #b9d0c8;position:relative;display:flex;align-items:center;justify-content:center;gap:1px;transform:perspective(180px) rotateX(5deg)}
+.logo span{font-size:29px;font-weight:950;line-height:1}
+.logo i{font-size:11px;font-style:normal;font-weight:950;letter-spacing:-1px;margin-top:13px}
+.status{position:absolute;right:0;top:18px;background:#fff;border-color:#dce2e8;color:#566372}
+.hero{padding-top:26px}
+.eyebrow{color:#176b54;letter-spacing:1.3px}
+.hero h2{color:#18212b;letter-spacing:-1.1px}
+.hero p,.sub{color:#657180}
+.hero-visual{background:linear-gradient(105deg,#102b26f2 0%,#173f35e8 44%,#122b27d9 100%),url('https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1200&q=65') center 38%/cover;border:1px solid #355d52;box-shadow:0 18px 35px #162c2518;min-height:255px}
+.hero-visual h3,.hero-visual p,.hero-visual .eyebrow{color:#fff}
+.hero-visual .eyebrow{opacity:.78}
+.hero-visual:after{width:150px;height:150px;right:7%;top:22%;border:1px solid #ffffff44;box-shadow:0 20px 35px #0003;animation:none}
+.metric,.panel{background:#fff;border-color:#dce2e8;box-shadow:0 5px 16px #24354408}
+.metric strong{color:#17252e}
+.site-nav{border-color:#d6dde4}
+.site-nav a{color:#3e4c58}
+.sports-ticker{background:#fff;border-color:#dce2e8}
+.ticker-track span{color:#4e5b67}.ticker-track b{color:#176b54}
+.editorial-card,.entity-card,#dppWorkspace .workspace-card{background:#fff;color:#18212b;border-color:#dce2e8;box-shadow:0 5px 16px #24354408}
+.editorial-card small,.player-copy small{color:#176b54}
+.editorial-card p,.entity-card small,#dppWorkspace .workspace-card small{color:#657180}
+.player-spotlight a{border-color:#dce2e8;box-shadow:0 8px 20px #24354412}
+.tab{color:#52606c;border-color:#d6dde4}
+.tab.active,#dppWorkspace .workspace-actions button.active{background:#176b54;border-color:#176b54;color:#fff}
+.btn{background:linear-gradient(135deg,#1d7b60,#145541);color:#fff;box-shadow:0 4px 10px #176b5420}
+.btn.secondary,#dppWorkspace .workspace-actions button{background:#fff;color:#34424e;border-color:#d6dde4}
+.field{background:#fff;color:#18212b;border-color:#d6dde4}
+#dppWorkspace .workspace-card:hover,.entity-card:hover{border-color:#176b54;box-shadow:0 8px 20px #24354412}
+body.dpp-detail-mode #dppWorkspace{background:#f2f5f6;color:#18212b}
+#dppWorkspace .prop-card{background:#fff;border-color:#dce2e8;border-radius:12px;box-shadow:0 5px 16px #24354408}
+#dppWorkspace .prop-card h4{font-size:16px;color:#18212b}
+#dppWorkspace .prop-history{color:#657180}
+#dppWorkspace .prop-line{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #e5eaee;margin-top:10px;padding-top:10px;color:#657180;font-size:13px}
+#dppWorkspace .prop-line b{font-size:18px;color:#176b54}
+#dppWorkspace .prop-odds{display:none!important}
+#dppWorkspace .workspace-table table{min-width:0}
+#dppWorkspace .workspace-table th,#dppWorkspace .workspace-table td{white-space:normal}
+#dppWorkspace .workspace-list{grid-template-columns:repeat(auto-fit,minmax(175px,1fr))}
+#dppWorkspace .stat-grid{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+#dppWorkspace .stat-tile{background:#fff;border-color:#dce2e8}
+@media(max-width:560px){.top{padding-top:12px}.status{position:static;margin-top:10px}.brand h1{font-size:18px}.logo{width:49px;height:49px}.hero-visual{min-height:215px}.hero-visual:after{width:90px;height:90px;right:4%;top:28%}}
 </style>
 </head>
 <body><main class="shell">
-<header class="top"><div class="brand"><div class="logo">D</div><div><h1>D PLAYERS PROPS</h1><p>Sports news • player profiles • performance research</p></div></div><div class="status" id="connection"><i></i>Checking API connection…</div></header>
+<header class="top"><div class="brand"><div class="logo" aria-label="DPP logo"><span>D</span><i>PP</i></div><div><h1>D PLAYERS PROPS</h1><p>Sports intelligence • player & team research</p></div></div><div class="status" id="connection"><i></i>Checking API connection…</div></header>
 <nav class="site-nav" aria-label="Sports site navigation"><a href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">HOME</a><a href="#headlines">LATEST NEWS</a><a href="#player-spotlight">PLAYER SPOTLIGHT</a><a href="#sportCards">SPORTS</a><a href="#matches" onclick="document.querySelector('[data-view=matches]').click();return false">FIXTURES & SCORES</a><a href="#players" onclick="document.querySelector('[data-view=players]').click();return false">PLAYER DATABASE</a></nav>
 <div class="sports-ticker" aria-label="Sports headlines ticker"><div class="ticker-track"><span>🏀 <b>DPP COURTSIDE</b> — Player research, matchups and performance</span><span>⚽ <b>FOOTBALL</b> — Fixtures, team news and player form</span><span>🏈 <b>GRIDIRON</b> — Yards, receptions and touchdowns</span><span>🏒 <b>HOCKEY</b> — Shots, saves and goals</span><span>🎾 <b>TENNIS</b> — Aces, sets and match history</span><span>⚾ <b>BASEBALL</b> — Hits, strikeouts and total bases</span><span>🏀 <b>DPP COURTSIDE</b> — Player research, matchups and performance</span><span>⚽ <b>FOOTBALL</b> — Fixtures, team news and player form</span><span>🏈 <b>GRIDIRON</b> — Yards, receptions and touchdowns</span><span>🏒 <b>HOCKEY</b> — Shots, saves and goals</span><span>🎾 <b>TENNIS</b> — Aces, sets and match history</span><span>⚾ <b>BASEBALL</b> — Hits, strikeouts and total bases</span></div></div>
 <section class="hero"><div class="eyebrow">Your sports research command center</div><h2>Find the match.<br>Study the player.</h2><p>Choose a sport, open today's fixtures, select a team and inspect player performance before you decide which props to track.</p>
@@ -222,7 +272,7 @@ $('getLiveProps').onclick=async()=>{const sport=$('propSport').value,market=$('p
  function content(s){W('workspaceContent').innerHTML=s}
  function openDetail(){document.body.classList.add('dpp-detail-mode');W('dppWorkspace').scrollTop=0}
  function closeDetail(){document.body.classList.remove('dpp-detail-mode')}
- function marketCard(p,history){return '<article class="prop-card"><h4>'+safe(p.name)+'</h4><div class="prop-history">Last 5: '+safe(history||'History unavailable')+'</div><div class="prop-odds"><div><small>LINE</small><b>'+safe(p.line??'—')+'</b></div><div><small>OVER</small><b>'+safe(p.over_price??'—')+'</b></div><div><small>UNDER</small><b>'+safe(p.under_price??'—')+'</b></div></div></article>'}
+ function marketCard(p,history){return '<article class="prop-card"><h4>'+safe(p.name)+'</h4><div class="prop-history">'+safe(history||'Recent match history unavailable')+'</div>'+(p.line!==undefined&&p.line!==null?'<div class="prop-line"><span>Prop line</span><b>'+safe(p.line)+'</b></div>':'')+'</article>'}
  function activeTab(t){tab=t;W('workspaceActions').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.worktab===t));renderTab()}
  async function request(path){return await api(path)}
  function card(title,sub,attrs=''){return '<button class="workspace-card" '+attrs+'><b>'+safe(title)+'</b><small>'+safe(sub)+'</small></button>'}
