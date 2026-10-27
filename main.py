@@ -1284,3 +1284,143 @@ def unified_player_research_status():
         "generated_at": now_utc(),
         "live_backend_changed": False,
     }
+
+
+# API-Football integration; API key remains server-side.
+API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
+
+def _api_football_request(path, params=None, timeout=10):
+    api_key = os.getenv("API_FOOTBALL_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="API-Football is not configured on this backend.")
+    query = urllib.parse.urlencode(params or {})
+    url = API_FOOTBALL_BASE_URL + path + (("?" + query) if query else "")
+    request = urllib.request.Request(url, headers={
+        "x-apisports-key": api_key, "Accept": "application/json",
+        "User-Agent": "DPlayersProps/1.0",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise HTTPException(status_code=502, detail="API-Football rejected the configured key or plan access.")
+        if exc.code == 429:
+            raise HTTPException(status_code=429, detail="API-Football request quota or rate limit reached.")
+        raise HTTPException(status_code=502, detail="API-Football request failed.")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        raise HTTPException(status_code=502, detail="API-Football is temporarily unreachable.")
+    if isinstance(payload, dict) and payload.get("errors"):
+        raise HTTPException(status_code=502, detail="API-Football returned a provider error.")
+    return payload if isinstance(payload, dict) else {"response": []}
+
+
+@app.get("/api/football/status")
+def api_football_status():
+    configured = bool(os.getenv("API_FOOTBALL_KEY", "").strip())
+    return {
+        "provider": "API-Football", "configured": configured,
+        "mode": "configured_unverified" if configured else "api_key_required",
+        "endpoints": ["/api/football/search", "/api/football/player-stats", "/api/football/player-gamelog"],
+        "notes": ["Season coverage differs by league.", "Player statistics are not sportsbook odds.", "Match logs use multiple provider requests."],
+        "generated_at": now_utc(),
+    }
+
+
+@app.get("/api/football/search")
+def api_football_search(q: str = Query(..., min_length=2, max_length=100), season: int = Query(default=2026, ge=2000, le=2100)):
+    payload = _api_football_request("/players", {"search": q.strip(), "season": season})
+    players = []
+    for item in payload.get("response", []) or []:
+        player = item.get("player") or {}
+        stats = item.get("statistics") or []
+        stat = stats[0] if stats else {}
+        team, league, games = stat.get("team") or {}, stat.get("league") or {}, stat.get("games") or {}
+        players.append({
+            "id": player.get("id"), "name": player.get("name") or "",
+            "nationality": player.get("nationality") or "", "age": player.get("age"),
+            "photo": player.get("photo") or "", "position": games.get("position") or "",
+            "team": {"id": team.get("id"), "name": team.get("name") or ""},
+            "league": {"id": league.get("id"), "name": league.get("name") or "", "country": league.get("country") or ""},
+            "season": league.get("season", season), "source": "API-Football",
+        })
+    return {"provider": "API-Football", "mode": "live_provider", "query": q.strip(), "season": season, "count": len(players), "players": players, "generated_at": now_utc()}
+
+
+@app.get("/api/football/player-stats")
+def api_football_player_stats(player_id: int = Query(..., ge=1), season: int = Query(default=2026, ge=2000, le=2100), league_id: int | None = Query(default=None, ge=1)):
+    params = {"id": player_id, "season": season}
+    if league_id is not None:
+        params["league"] = league_id
+    payload = _api_football_request("/players", params)
+    results = []
+    for item in payload.get("response", []) or []:
+        player = item.get("player") or {}
+        for stat in item.get("statistics") or []:
+            games, goals = stat.get("games") or {}, stat.get("goals") or {}
+            shots, passes = stat.get("shots") or {}, stat.get("passes") or {}
+            tackles, cards = stat.get("tackles") or {}, stat.get("cards") or {}
+            team, league = stat.get("team") or {}, stat.get("league") or {}
+            results.append({
+                "player": {"id": player.get("id"), "name": player.get("name") or "", "photo": player.get("photo") or ""},
+                "team": {"id": team.get("id"), "name": team.get("name") or ""},
+                "league": {"id": league.get("id"), "name": league.get("name") or "", "country": league.get("country") or "", "season": league.get("season", season)},
+                "appearances": games.get("appearences", games.get("appearances")), "starts": games.get("lineups"),
+                "minutes": games.get("minutes"), "position": games.get("position") or "", "rating": games.get("rating"),
+                "goals": goals.get("total"), "assists": goals.get("assists"),
+                "shots": {"total": shots.get("total"), "on_target": shots.get("on")},
+                "passes": {"total": passes.get("total"), "key": passes.get("key"), "accuracy": passes.get("accuracy")},
+                "tackles": {"total": tackles.get("total"), "blocks": tackles.get("blocks"), "interceptions": tackles.get("interceptions")},
+                "cards": {"yellow": cards.get("yellow"), "red": cards.get("red")}, "source": "API-Football",
+            })
+    return {"provider": "API-Football", "mode": "live_provider" if results else "no_stats_for_selection", "player_id": player_id, "season": season, "league_id": league_id, "count": len(results), "statistics": results, "generated_at": now_utc()}
+
+
+@app.get("/api/football/player-gamelog")
+def api_football_player_gamelog(player_id: int = Query(..., ge=1), team_id: int = Query(..., ge=1), season: int = Query(default=2026, ge=2000, le=2100), count: int = Query(default=5, ge=1, le=10), league_id: int | None = Query(default=None, ge=1)):
+    # One fixture lookup plus at most count fixture-player lookups, to bound quota use.
+    fixture_params = {"team": team_id, "season": season, "last": max(count, 5)}
+    if league_id is not None:
+        fixture_params["league"] = league_id
+    fixture_payload = _api_football_request("/fixtures", fixture_params)
+    fixtures = fixture_payload.get("response", []) or []
+    fixtures.sort(key=lambda item: ((item.get("fixture") or {}).get("date") or ""), reverse=True)
+    games = []
+    for item in fixtures:
+        if len(games) >= count:
+            break
+        fixture = item.get("fixture") or {}
+        fixture_id = fixture.get("id")
+        if not fixture_id:
+            continue
+        detail = _api_football_request("/fixtures/players", {"fixture": fixture_id})
+        found = None
+        for team_item in detail.get("response", []) or []:
+            for player_item in team_item.get("players", []) or []:
+                if str((player_item.get("player") or {}).get("id")) == str(player_id):
+                    stat_list = player_item.get("statistics") or []
+                    found = stat_list[0] if stat_list else {}
+                    break
+            if found is not None:
+                break
+        if found is None:
+            continue
+        g, goal, shot = found.get("games") or {}, found.get("goals") or {}, found.get("shots") or {}
+        passes, tackles, cards = found.get("passes") or {}, found.get("tackles") or {}, found.get("cards") or {}
+        teams = item.get("teams") or {}
+        home, away = teams.get("home") or {}, teams.get("away") or {}
+        games.append({
+            "fixture_id": fixture_id, "date": fixture.get("date") or "",
+            "status": (fixture.get("status") or {}).get("short") or "",
+            "league": (item.get("league") or {}).get("name") or "",
+            "opponent": away.get("name") if str(home.get("id")) == str(team_id) else home.get("name"),
+            "home_team": home.get("name") or "", "away_team": away.get("name") or "",
+            "home_goals": (item.get("goals") or {}).get("home"), "away_goals": (item.get("goals") or {}).get("away"),
+            "minutes": g.get("minutes"), "position": g.get("position") or "", "rating": g.get("rating"),
+            "goals": goal.get("total"), "assists": goal.get("assists"),
+            "shots": {"total": shot.get("total"), "on_target": shot.get("on")},
+            "passes": {"total": passes.get("total"), "key": passes.get("key"), "accuracy": passes.get("accuracy")},
+            "tackles": {"total": tackles.get("total"), "interceptions": tackles.get("interceptions")},
+            "cards": {"yellow": cards.get("yellow"), "red": cards.get("red")}, "source": "API-Football",
+        })
+    return {"provider": "API-Football", "mode": "live_provider" if games else "no_player_match_stats", "player_id": player_id, "team_id": team_id, "season": season, "requested_matches": count, "count": len(games), "games": games, "note": "Only matches with a returned player-stat record are listed; missing values are not treated as zero.", "generated_at": now_utc()}
