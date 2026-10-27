@@ -257,6 +257,32 @@ body.dpp-detail-mode #dppWorkspace{background:#f3f5f8;color:#172033}body.dpp-det
 @media(max-width:760px){.editorial-grid{grid-template-columns:1fr}.editorial-card img{height:190px}.player-spotlight{grid-template-columns:repeat(2,minmax(0,1fr))}.player-spotlight>a{align-items:flex-start;flex-direction:column}.player-spotlight img{width:58px;height:58px}.hero-visual{min-height:190px;padding:20px}.top{border-radius:14px}.site-nav{margin:0 -2px}}
 @media(max-width:420px){.player-spotlight{grid-template-columns:1fr}.player-spotlight>a{flex-direction:row;align-items:center}}
 
+
+/* Cinematic sports cards: grouped team tiles with crests, sport photography and compact multi-market rows */
+#dppWorkspace .workspace-list{grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:14px}
+#dppWorkspace .workspace-card{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:174px;overflow:hidden;text-align:left;border-radius:16px;padding:0;background:linear-gradient(180deg,rgba(8,17,32,.02) 0%,rgba(8,17,32,.88) 100%),var(--team-art,linear-gradient(135deg,#1e3a5f,#0f172a));background-size:cover;background-position:center;color:#fff;box-shadow:0 10px 25px #0f172a18;transition:transform .2s,box-shadow .2s}
+#dppWorkspace .workspace-card:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,23,42,.02),rgba(15,23,42,.08) 35%,rgba(15,23,42,.92));z-index:0}
+#dppWorkspace .workspace-card:hover{transform:translateY(-3px);box-shadow:0 15px 30px #0f172a28;border-color:#93b4e8}
+#dppWorkspace .workspace-card b,#dppWorkspace .workspace-card small{position:relative;z-index:1;margin-left:16px;margin-right:16px}
+#dppWorkspace .workspace-card b{font-size:16px;line-height:1.25;color:#fff;margin-bottom:6px}
+#dppWorkspace .workspace-card small{color:#e2e8f0;margin-bottom:15px;font-size:12px}
+#dppWorkspace .workspace-card .team-crest{position:absolute;z-index:1;right:15px;top:13px;width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 4px 7px #0008)}
+#dppWorkspace .workspace-card .card-kicker{position:relative;z-index:1;margin:15px 16px 8px;color:#bfdbfe;text-transform:uppercase;letter-spacing:1.1px;font-size:10px;font-weight:900}
+#dppWorkspace .workspace-card .multi-markets{position:relative;z-index:1;display:flex;gap:5px;flex-wrap:wrap;margin:0 14px 14px}
+#dppWorkspace .workspace-card .multi-markets span{font-size:10px;color:#fff;border:1px solid #ffffff50;background:#ffffff18;border-radius:6px;padding:4px 6px}
+#dppWorkspace .matchup-card{min-height:210px;background-image:linear-gradient(180deg,rgba(8,17,32,.1),rgba(8,17,32,.94)),var(--team-art,linear-gradient(135deg,#1e3a5f,#0f172a))}
+#dppWorkspace .team-vs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:12px 16px 6px;position:relative;z-index:1}
+#dppWorkspace .team-vs img{width:43px;height:43px;object-fit:contain;filter:drop-shadow(0 3px 5px #0007)}
+#dppWorkspace .team-vs strong{font-size:10px;color:#e2e8f0;text-align:center}
+#dppWorkspace .team-vs .side{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-size:11px;font-weight:800;color:#fff}
+#dppWorkspace .team-detail-hero{position:relative;overflow:hidden;border-radius:18px;padding:28px;color:#fff;background:linear-gradient(90deg,#0b172a 0%,rgba(11,23,42,.84) 48%,rgba(11,23,42,.35)),url('https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1400&q=85') center/cover;margin:8px 0 18px}
+#dppWorkspace .team-detail-hero h3{font-size:clamp(26px,4vw,38px);color:white;margin:7px 0}
+#dppWorkspace .team-detail-hero p{color:#e2e8f0}
+#dppWorkspace .team-detail-hero .team-crest{width:80px;height:80px;object-fit:contain;float:right;filter:drop-shadow(0 5px 10px #0009)}
+#dppWorkspace .market-pills{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+#dppWorkspace .market-pills span{border:1px solid #dbe3ec;background:#f8fafc;color:#334155;border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700}
+@media(max-width:560px){#dppWorkspace .workspace-list{grid-template-columns:1fr 1fr;gap:9px}#dppWorkspace .workspace-card{min-height:155px}#dppWorkspace .workspace-card b{font-size:13px;margin-left:11px;margin-right:11px}#dppWorkspace .workspace-card small{font-size:10px;margin-left:11px;margin-right:11px}#dppWorkspace .workspace-card .card-kicker{margin-left:11px}#dppWorkspace .workspace-card .team-crest{width:38px;height:38px;right:10px;top:10px}#dppWorkspace .team-detail-hero{padding:20px}}
+
 </style>
 </head>
 <body><main class="shell">
