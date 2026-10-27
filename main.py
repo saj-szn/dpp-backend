@@ -571,3 +571,117 @@ def stats_summary():
         ],
         **response_status(),
     }
+
+
+# Public-provider integrations. Provider responses are returned as sourced data;
+# no generated/demo records are presented as live results.
+import urllib.parse
+import urllib.request
+import urllib.error
+
+PROVIDER_SPORTS = {
+    "basketball": ("basketball", "nba"),
+    "football": ("soccer", "eng.1"),
+    "american_football": ("football", "nfl"),
+    "hockey": ("hockey", "nhl"),
+    "baseball": ("baseball", "mlb"),
+    "tennis": ("tennis", ""),
+}
+
+def provider_json(url, timeout=8):
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "PlayasProps/1.0 (sports research app)", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+@app.get("/api/providers/status")
+def providers_status():
+    return {
+        "providers": [
+            {"name": "ESPN public scoreboard", "purpose": "fixtures and scores", "authentication": "none", "status": "configured_unverified"},
+            {"name": "TheSportsDB public test key", "purpose": "player and team directory search", "authentication": "public test key", "status": "configured_unverified"},
+        ],
+        "important": "Provider availability and coverage vary. Sportsbook player prop lines are not supplied by scoreboard endpoints.",
+        "generated_at": now_utc(),
+    }
+
+@app.get("/api/live/players")
+def live_players(sport: str = Query(...), q: str = Query(..., min_length=2)):
+    sport_id = validate_sport(sport)
+    query = urllib.parse.urlencode({"p": q.strip()})
+    url = "https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?" + query
+    try:
+        data = provider_json(url)
+        raw = data.get("player") or []
+        results = [{
+            "id": str(p.get("idPlayer") or ""),
+            "name": p.get("strPlayer") or "",
+            "team": p.get("strTeam") or "",
+            "sport": p.get("strSport") or SPORTS[sport_id],
+            "nationality": p.get("strNationality") or "",
+            "position": p.get("strPosition") or "",
+            "date_of_birth": p.get("dateBorn") or "",
+            "source": "TheSportsDB",
+            "source_url": "https://www.thesportsdb.com/",
+        } for p in raw if p.get("strPlayer")]
+        return {"sport": sport_id, "query": q, "players": results, "source": "TheSportsDB", "mode": "live_provider", "count": len(results), "generated_at": now_utc()}
+    except Exception as exc:
+        return {"sport": sport_id, "query": q, "players": [], "source": "TheSportsDB", "mode": "provider_unavailable", "count": 0, "message": "Live player search could not reach the provider. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+
+@app.get("/api/live/teams")
+def live_teams(sport: str = Query(...), q: str = Query(..., min_length=2)):
+    sport_id = validate_sport(sport)
+    query = urllib.parse.urlencode({"t": q.strip()})
+    url = "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?" + query
+    try:
+        data = provider_json(url)
+        raw = data.get("teams") or []
+        results = [{
+            "id": str(t.get("idTeam") or ""),
+            "name": t.get("strTeam") or "",
+            "sport": t.get("strSport") or SPORTS[sport_id],
+            "league": t.get("strLeague") or "",
+            "country": t.get("strCountry") or "",
+            "source": "TheSportsDB",
+        } for t in raw if t.get("strTeam")]
+        return {"sport": sport_id, "query": q, "teams": results, "source": "TheSportsDB", "mode": "live_provider", "count": len(results), "generated_at": now_utc()}
+    except Exception as exc:
+        return {"sport": sport_id, "query": q, "teams": [], "source": "TheSportsDB", "mode": "provider_unavailable", "count": 0, "message": "Live team search could not reach the provider. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+
+@app.get("/api/live/matches")
+def live_matches(sport: str = Query(...), date: str = Query(default="")):
+    sport_id = validate_sport(sport)
+    category, league = PROVIDER_SPORTS[sport_id]
+    if not league:
+        return {"sport": sport_id, "matches": [], "source": "ESPN", "mode": "unsupported_provider_sport", "message": "The current scoreboard adapter does not provide tennis fixtures.", "generated_at": now_utc()}
+    params = urllib.parse.urlencode({"dates": date} if date else {})
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{category}/{league}/scoreboard"
+    if params:
+        url += "?" + params
+    try:
+        data = provider_json(url)
+        events = data.get("events") or []
+        results = []
+        for event in events:
+            competitions = event.get("competitions") or []
+            comp = competitions[0] if competitions else {}
+            competitors = comp.get("competitors") or []
+            home = next((x for x in competitors if x.get("homeAway") == "home"), {})
+            away = next((x for x in competitors if x.get("homeAway") == "away"), {})
+            results.append({
+                "id": event.get("id"),
+                "name": event.get("name") or event.get("shortName") or "",
+                "date": event.get("date") or "",
+                "status": ((event.get("status") or {}).get("type") or {}).get("description", ""),
+                "home_team": (home.get("team") or {}).get("displayName", ""),
+                "away_team": (away.get("team") or {}).get("displayName", ""),
+                "home_score": home.get("score"),
+                "away_score": away.get("score"),
+                "sport": sport_id,
+                "source": "ESPN public scoreboard",
+            })
+        return {"sport": sport_id, "matches": results, "source": "ESPN public scoreboard", "mode": "live_provider", "count": len(results), "generated_at": now_utc()}
+    except Exception as exc:
+        return {"sport": sport_id, "matches": [], "source": "ESPN public scoreboard", "mode": "provider_unavailable", "count": 0, "message": "The scoreboard provider could not be reached. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
