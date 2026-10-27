@@ -722,6 +722,102 @@ def live_matches(sport: str = Query(...), date: str = Query(default="")):
         return {"sport": sport_id, "matches": [], "source": "ESPN public scoreboard", "mode": "provider_unavailable", "count": 0, "message": "The scoreboard provider could not be reached or the requested date range is invalid. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
 
 
+@app.get("/api/live/props")
+def live_player_props(
+    sport: str = Query(default="basketball"),
+    event_id: str = Query(default=""),
+    markets: str = Query(default="player_points,player_rebounds,player_assists,player_points_rebounds_assists"),
+):
+    """
+    Real sportsbook player props from The Odds API.
+    Requires ODDS_API_KEY configured as a secret environment variable on Render.
+    Never fabricate lines: without a key or eligible plan, return an explicit status.
+    """
+    sport_id = validate_sport(sport)
+    sport_keys = {
+        "basketball": "basketball_nba",
+        "american_football": "americanfootball_nfl",
+        "baseball": "baseball_mlb",
+        "hockey": "icehockey_nhl",
+        "football": "soccer_epl",
+        "tennis": "tennis",
+    }
+    sport_key = sport_keys.get(sport_id)
+    api_key = os.getenv("ODDS_API_KEY", "").strip()
+    if not api_key:
+        return {
+            "sport": sport_id, "props": [], "count": 0,
+            "mode": "needs_api_key",
+            "provider": "The Odds API",
+            "message": "Configure ODDS_API_KEY in Render environment variables. Player props require an eligible provider plan."
+        }
+    if not sport_key:
+        raise HTTPException(status_code=400, detail="Unsupported sport")
+    allowed_markets = {
+        "basketball": {"player_points", "player_rebounds", "player_assists", "player_points_rebounds_assists", "player_threes", "player_blocks", "player_steals", "player_double_double"},
+        "hockey": {"player_points", "player_goals", "player_assists", "player_shots_on_goal", "player_power_play_points"},
+        "baseball": {"batter_hits", "batter_total_bases", "pitcher_strikeouts", "batter_home_runs", "batter_rbis", "batter_runs_scored"},
+        "american_football": {"player_pass_yds", "player_pass_tds", "player_rush_yds", "player_receptions", "player_reception_yds", "player_anytime_td"},
+    }
+    requested = [m.strip() for m in markets.split(",") if m.strip()]
+    permitted = allowed_markets.get(sport_id, set())
+    requested = [m for m in requested if m in permitted]
+    if not requested:
+        requested = sorted(permitted)[:4]
+    params = {"sport_key": sport_key, "markets": ",".join(requested)}
+    if event_id:
+        params["event_id"] = event_id
+    url = "https://api.theoddsapi.com/props/?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(
+        url,
+        headers={"x-api-key": api_key, "Accept": "application/json", "User-Agent": "DPP/1.0"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        events = data if isinstance(data, list) else data.get("data", data.get("events", []))
+        props = []
+        for event in events or []:
+            for bookmaker in event.get("bookmakers", []) or []:
+                for market in bookmaker.get("markets", []) or []:
+                    for outcome in market.get("outcomes", []) or []:
+                        props.append({
+                            "event_id": event.get("id") or event.get("event_id"),
+                            "event": event.get("home_team", "") + " vs " + event.get("away_team", ""),
+                            "commence_time": event.get("commence_time", ""),
+                            "player": outcome.get("description") or outcome.get("participant") or outcome.get("name", ""),
+                            "market": market.get("key", ""),
+                            "side": outcome.get("name", ""),
+                            "line": outcome.get("point"),
+                            "price": outcome.get("price"),
+                            "bookmaker": bookmaker.get("title") or bookmaker.get("key", ""),
+                            "source": "The Odds API",
+                        })
+        return {"sport": sport_id, "props": props, "count": len(props), "provider": "The Odds API", "mode": "live_provider", "generated_at": now_utc()}
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        mode = "provider_auth_or_plan_error" if code in (401, 403) else "provider_unavailable"
+        return {
+            "sport": sport_id, "props": [], "count": 0, "provider": "The Odds API",
+            "mode": mode,
+            "message": "The provider rejected the key or this plan does not include player props." if code in (401, 403) else "The props provider could not be reached.",
+            "http_status": code, "error_type": type(exc).__name__, "generated_at": now_utc()
+        }
+
+
+@app.get("/api/live/provider-status")
+def live_provider_status():
+    return {
+        "providers": [
+            {"name": "ESPN", "purpose": "fixtures, scores, rosters, game logs", "authentication": "public endpoint", "configured": True},
+            {"name": "The Odds API", "purpose": "real sportsbook player props and prices", "configured": bool(os.getenv("ODDS_API_KEY", "").strip()), "required_environment_variable": "ODDS_API_KEY", "note": "Player props require an eligible plan."},
+            {"name": "NBA Stat API", "purpose": "NBA player statistics and historical logs", "configured": bool(os.getenv("NBASTAT_API_TOKEN", "").strip()), "required_environment_variable": "NBASTAT_API_TOKEN", "note": "Review provider terms; documented use is personal, non-commercial."},
+            {"name": "TheSportsDB", "purpose": "supplementary player/team directory", "configured": True},
+        ],
+        "generated_at": now_utc()
+    }
+
+
 @app.get("/api/live/roster")
 def live_roster(sport: str = Query(...), team_id: str = Query(..., min_length=1)):
     sport_id = validate_sport(sport)
