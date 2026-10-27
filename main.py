@@ -656,13 +656,44 @@ def live_matches(sport: str = Query(...), date: str = Query(default="")):
     category, league = PROVIDER_SPORTS[sport_id]
     if not league:
         return {"sport": sport_id, "matches": [], "source": "ESPN", "mode": "unsupported_provider_sport", "message": "The current scoreboard adapter does not provide tennis fixtures.", "generated_at": now_utc()}
-    params = urllib.parse.urlencode({"dates": date} if date else {})
-    url = f"https://site.api.espn.com/apis/site/v2/sports/{category}/{league}/scoreboard"
-    if params:
-        url += "?" + params
+
+    # ESPN's public Site scoreboard no longer reliably accepts date ranges.
+    # For YYYYMMDD-YYYYMMDD, request each date separately and merge event IDs.
     try:
-        data = provider_json(url)
-        events = data.get("events") or []
+        dates = []
+        if date:
+            if "-" in date:
+                start, end = date.split("-", 1)
+                if not (start.isdigit() and end.isdigit() and len(start) == 8 and len(end) == 8):
+                    raise ValueError("date range must use YYYYMMDD-YYYYMMDD")
+                from datetime import datetime, timedelta
+                start_day = datetime.strptime(start, "%Y%m%d").date()
+                end_day = datetime.strptime(end, "%Y%m%d").date()
+                span = (end_day - start_day).days
+                if span < 0 or span > 6:
+                    raise ValueError("date range must be forward and no longer than 7 days")
+                dates = [(start_day + timedelta(days=n)).strftime("%Y%m%d") for n in range(span + 1)]
+            else:
+                if not (date.isdigit() and len(date) == 8):
+                    raise ValueError("date must use YYYYMMDD")
+                from datetime import datetime
+                datetime.strptime(date, "%Y%m%d")
+                dates = [date]
+        else:
+            dates = [""]
+
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{category}/{league}/scoreboard"
+        events_by_id = {}
+        for day in dates:
+            request_url = url
+            if day:
+                request_url += "?" + urllib.parse.urlencode({"dates": day})
+            data = provider_json(request_url)
+            for event in (data.get("events") or []):
+                event_id = str(event.get("id") or "")
+                if event_id:
+                    events_by_id[event_id] = event
+        events = sorted(events_by_id.values(), key=lambda event: (event.get("date") or "", str(event.get("id") or "")))
         results = []
         for event in events:
             competitions = event.get("competitions") or []
@@ -686,9 +717,9 @@ def live_matches(sport: str = Query(...), date: str = Query(default="")):
                 "sport": sport_id,
                 "source": "ESPN public scoreboard",
             })
-        return {"sport": sport_id, "matches": results, "source": "ESPN public scoreboard", "mode": "live_provider", "count": len(results), "generated_at": now_utc()}
+        return {"sport": sport_id, "matches": results, "source": "ESPN public scoreboard", "mode": "live_provider", "count": len(results), "queried_dates": dates, "generated_at": now_utc()}
     except Exception as exc:
-        return {"sport": sport_id, "matches": [], "source": "ESPN public scoreboard", "mode": "provider_unavailable", "count": 0, "message": "The scoreboard provider could not be reached. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
+        return {"sport": sport_id, "matches": [], "source": "ESPN public scoreboard", "mode": "provider_unavailable", "count": 0, "message": "The scoreboard provider could not be reached or the requested date range is invalid. Try again later.", "error_type": type(exc).__name__, "generated_at": now_utc()}
 
 
 @app.get("/api/live/roster")
