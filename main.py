@@ -713,3 +713,19 @@ def live_roster(sport: str = Query(...), team_id: str = Query(..., min_length=1)
         return {"sport": sport_id, "team_id": team_id, "players": players, "count": len(players), "source": "ESPN roster", "mode": "live_provider"}
     except Exception as exc:
         return {"sport": sport_id, "team_id": team_id, "players": [], "count": 0, "mode": "provider_unavailable", "message": "Team roster could not be loaded.", "error_type": type(exc).__name__}
+
+
+@app.get("/api/live/player-gamelog")
+def live_player_gamelog(sport: str = Query(...), player_id: str = Query(..., min_length=1), limit: int = Query(default=20, ge=1, le=50)):
+    sport_id = validate_sport(sport)
+    category, league = PROVIDER_SPORTS[sport_id]
+    if not league:
+        return {"sport": sport_id, "games": [], "mode": "unsupported_provider_sport"}
+    url = f"https://site.web.api.espn.com/apis/common/v3/sports/{category}/{league}/athletes/{urllib.parse.quote(player_id)}/gamelog"
+    try:
+        data = provider_json(url)
+        # Keep provider game-log structure intact; schemas differ by sport.
+        games = data.get("events") or data.get("gamelog") or data.get("seasonTypes") or []
+        return {"sport": sport_id, "player_id": player_id, "games": games[:limit], "count": min(len(games), limit), "source": "ESPN public game log", "mode": "live_provider"}
+    except Exception as exc:
+        return {"sport": sport_id, "player_id": player_id, "games": [], "count": 0, "mode": "provider_unavailable", "message": "Player game history could not be loaded.", "error_type": type(exc).__name__}
