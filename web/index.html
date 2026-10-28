@@ -472,42 +472,72 @@ $('getLiveProps').onclick=async()=>{const sport=$('propSport').value,market=$('p
  async function loadPlayerHistory(){const p=selectedPlayer,name=p.name||p.player_name||p.full_name||p.id;const custom=Number(W('playerRangeCustom').value);const limit=custom>=1&&custom<=50?custom:Number(W('playerRange').value||5);W('playerHistoryResult').innerHTML='<p class="sub">Loading up to '+limit+' recent games…</p>';let out='';try{const id=p.id||p.player_id||p.athlete_id;if(id){const apiSport=sport==='soccer'?'football':sport;const d=await request('/api/live/player-gamelog?'+new URLSearchParams({sport:apiSport,player_id:id,limit:String(limit)}));const a=rows(d);if(a.length){out+='<p class="sub good">Source: '+safe(d.source||'Live game log')+' • '+a.length+' records returned</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto">'+safe(JSON.stringify(a,null,2))+'</pre>'}else out+='<p class="sub">'+safe(d.message||'No live game log returned for this player.')+'</p>'}else out+='<p class="sub">This player result has no provider ID, so a live game log cannot be requested.</p>'}catch(e){out+='<p class="sub workspace-error">Live game history unavailable: '+safe(e.message)+'</p>'}try{const d=await request('/api/history?'+new URLSearchParams({sport,entity_type:'player',entity_id:name,count:String(Math.min(limit,20))}));const a=rows(d);if(a.length)out+='<h4>Saved player stats</h4><div class="workspace-table"><table><thead><tr><th>Date</th><th>Opponent</th><th>Prop / Stat</th><th>Value</th></tr></thead><tbody>'+a.map(x=>'<tr><td>'+safe(x.date)+'</td><td>'+safe(x.opponent)+'</td><td>'+safe(x.stat_name)+'</td><td>'+safe(x.stat_value)+'</td></tr>').join('')+'</tbody></table></div>'}catch(e){}W('playerHistoryResult').innerHTML=out||'<p class="sub">No history available.</p>'}
  async function loadPlayerProps(name,market){W('playerLiveProps').innerHTML='<p class="sub">Loading available live player prop lines…</p>';try{const params={sport,limit:'100'};if(name)params.player=name;if(market)params.markets=market;const d=await request('/api/live/parlayapi/props?'+new URLSearchParams(params));const a=rows(d).filter(p=>String(p.market_key||'').toLowerCase().startsWith('player_')&&p.player&&(!name||String(p.player).toLowerCase().includes(name.toLowerCase()))&&(!market||String(p.market_key).toLowerCase().includes(market.toLowerCase().replaceAll(' ','_'))));W('playerLiveProps').innerHTML=a.length?'<h3>Player Props • Live Lines</h3>'+a.map(p=>marketCard({name:p.market||p.market_key,line:p.line,over_price:p.over_price,under_price:p.under_price},'Live line • '+(p.bookmaker_title||p.bookmaker||'Bookmaker'))).join(''):'<p class="sub">No live sportsbook lines matched this player/market. The history view above is separate from current sportsbook lines.</p>'}catch(e){W('playerLiveProps').innerHTML='<p class="sub workspace-error">Props unavailable: '+safe(e.message)+'</p>'}}
  function renderProps(){
- content('<div class="dpp-props-head"><div><div class="eyebrow">DPP • PLAYER RESEARCH</div><h3>Player props & recent form</h3><p class="sub">Choose a sport, find a match or player, then expand the player to inspect real recorded stats. No odds, betting lines, or betting slip.</p></div></div><div class="dpp-props-toolbar"><select class="field" id="propsSport"><option value="basketball">Basketball</option><option value="soccer">Football / Soccer</option><option value="american_football">American Football</option><option value="hockey">Ice Hockey</option><option value="baseball">Baseball</option><option value="tennis">Tennis</option></select><input class="field grow" id="propsSearch" placeholder="Search player name"><button class="btn" id="propsSearchBtn">Search</button></div><div class="dpp-props-hint">Select a player to expand their research panel below. Recent figures appear only when returned by a data source.</div><div id="dppPropsResults"><div class="dpp-props-empty">Search for a player to begin.</div></div>');
+ content('<div class="dpp-props-head"><div><div class="eyebrow">DPP • PLAYER RESEARCH</div><h3>Live match player props</h3><p class="sub">Choose a live or upcoming match, open either team, then select a player. Each player’s stat categories and last-five recorded results stay together in the same panel. Research only — no odds or betting slip.</p></div></div><div class="dpp-props-toolbar"><select class="field" id="propsSport"><option value="basketball">Basketball</option><option value="soccer">Football / Soccer</option><option value="american_football">American Football</option><option value="hockey">Ice Hockey</option><option value="baseball">Baseball</option><option value="tennis">Tennis</option></select><select class="field" id="propsRange"><option value="5">Last 5 matches</option><option value="10">Last 10 matches</option><option value="20">Last 20 matches</option></select><button class="btn" id="propsLoadMatches">Load matches</button></div><div class="dpp-props-hint">Match → team → player → stat category and recent values. Only verified records are shown.</div><div id="dppPropsResults"><div class="dpp-props-empty">Loading matches…</div></div>');
  W('propsSport').value=sport||'basketball';
- W('propsSport').onchange=()=>{sport=W('propsSport').value;W('dppPropsResults').innerHTML='<div class="dpp-props-empty">Sport changed. Search for a player.</div>'};
- W('propsSearchBtn').onclick=async()=>{
-  const q=W('propsSearch').value.trim(), sp=W('propsSport').value;
-  if(q.length<2){W('dppPropsResults').innerHTML='<div class="dpp-props-empty">Enter at least two letters to search.</div>';return}
-  sport=sp;W('dppPropsResults').innerHTML='<div class="dpp-props-empty">Searching real player records…</div>';
+ const root=W('dppPropsResults');
+ const apiSport=sp=>sp==='soccer'?'football':sp;
+ W('propsSport').onchange=()=>{sport=W('propsSport').value;loadPropMatches()};
+ W('propsLoadMatches').onclick=()=>loadPropMatches();
+ async function loadPropMatches(){
+  const sp=W('propsSport').value;sport=sp;
+  root.innerHTML='<div class="dpp-props-empty">Loading live and upcoming matches…</div>';
   try{
-   const d=await request('/api/live/players?'+new URLSearchParams({sport:sp==='soccer'?'football':sp,q}));
-   const ps=rows(d).map(p=>({...p,_dppSport:sp}));
-   if(!ps.length){W('dppPropsResults').innerHTML='<div class="dpp-props-empty">No player records returned. Try another spelling or sport.</div>';return}
-   W('dppPropsResults').innerHTML=ps.map((p,i)=>'<details class="dpp-player-accordion" data-props-player="'+i+'"><summary><span class="dpp-player-avatar">'+safe((p.name||p.player_name||p.full_name||'?').slice(0,1).toUpperCase())+'</span><span class="dpp-player-name"><b>'+safe(p.name||p.player_name||p.full_name||'Unknown player')+'</b><small>'+safe(p.team||p.team_name||sportLabel(sp))+' · '+safe(p.position||'Player')+'</small></span><span class="dpp-player-chevron">⌄</span></summary><div class="dpp-player-body"><div class="dpp-player-toolbar"><label>Recent matches <select class="field dpp-count" data-count="'+i+'"><option value="5">Last 5</option><option value="10">Last 10</option><option value="20">Last 20</option></select></label><button class="btn dpp-load-history" data-load="'+i+'">Load stats</button></div><div class="dpp-player-stats" data-stats="'+i+'"><div class="dpp-props-empty">Open this player and tap Load stats.</div></div></div></details>').join('');
-   W('dppPropsResults').querySelectorAll('[data-load]').forEach(btn=>btn.onclick=async()=>{
-    const idx=+btn.dataset.load,p=ps[idx],target=W('dppPropsResults').querySelector('[data-stats="'+idx+'"]'),name=p.name||p.player_name||p.full_name||p.id,count=+(W('dppPropsResults').querySelector('[data-count="'+idx+'"]').value||5),id=p.id||p.player_id||p.athlete_id;
-    target.innerHTML='<div class="dpp-props-empty">Loading recorded stats…</div>';
-    let saved=[];
-    try{const h=await request('/api/history?'+new URLSearchParams({sport:sp,entity_type:'player',entity_id:name,count:String(Math.min(count,20))}));saved=rows(h)}catch(e){}
-    let live=[],liveMsg='';
-    if(id){try{const g=await request('/api/live/player-gamelog?'+new URLSearchParams({sport:sp==='soccer'?'football':sp,player_id:id,limit:String(count)}));live=rows(g);liveMsg=g.message||''}catch(e){liveMsg=e.message}}
-    const categories=(statNames[sp]||statNames.basketball);
-    let html='<div class="dpp-category-list">';
-    categories.forEach(cat=>{
-      const found=saved.filter(x=>String(x.stat_name||x.stat||x.market||'').toLowerCase()===String(cat).toLowerCase());
-      const vals=found.slice(0,count).map(x=>x.stat_value??x.value??x.total);
-      html+='<details class="dpp-stat-accordion"><summary><span>'+safe(cat)+'</span><span class="dpp-stat-count">'+(vals.length?vals.length+' records':'No saved records')+'</span><span>⌄</span></summary><div class="dpp-stat-body">'+(vals.length?'<div class="dpp-recent-values">'+vals.map((v,j)=>'<div class="dpp-recent-value"><small>'+(j===0?'Most recent':j===1?'2 games ago':(j+1)+' games ago')+'</small><b>'+safe(v)+'</b></div>').join('')+'</div><p class="dpp-stat-note">Saved history · values shown in returned order.</p>':'<p class="dpp-stat-note">No verified historical values for this category are saved yet. DPP will not fill gaps with guessed numbers.</p>')+'</div></details>';
-    });
-    html+='</div>';
-    if(saved.length)html='<p class="dpp-source-note">Source: DPP saved match history · '+saved.length+' stat records</p>'+html;
-    else html='<p class="dpp-source-note">No saved match history was found for this player yet.</p>'+html;
-    if(live.length)html+='<details class="dpp-stat-accordion dpp-raw-history"><summary>Provider match-log records <span>'+live.length+' returned</span><span>⌄</span></summary><div class="dpp-stat-body"><pre>'+safe(JSON.stringify(live,null,2))+'</pre></div></details>';
-    else if(liveMsg)html+='<p class="dpp-stat-note">Live match log: '+safe(liveMsg)+'</p>';
-    target.innerHTML=html;
-   });
-  }catch(e){W('dppPropsResults').innerHTML='<div class="dpp-props-empty dpp-error">Player search failed: '+safe(e.message)+'</div>'}
- };
- W('propsSearch').onkeydown=e=>{if(e.key==='Enter')W('propsSearchBtn').click()};
+   const d=await request('/api/live/matches?'+new URLSearchParams({sport:apiSport(sp)}));
+   const matches=rows(d).filter(m=>{const st=String(m.status||m.state||'').toLowerCase();return !st.includes('final')&&!st.includes('closed')&&!st.includes('completed')&&!st.includes('finished')});
+   if(!matches.length){root.innerHTML='<div class="dpp-props-empty">No live or upcoming matches were returned for '+safe(sportLabel(sp))+'. You can search for a player below, but the match-linked view needs fixture data from the provider.</div>'+searchFallback(sp);wireFallback(sp);return}
+   root.innerHTML=matches.map((m,i)=>'<details class="dpp-match-accordion" data-match="'+i+'"><summary><span class="dpp-match-status">'+safe(m.status||m.state||'Match')+'</span><span class="dpp-match-title"><b>'+safe(m.away_team||m.awayTeam||m.away||'Away team')+' <i>@</i> '+safe(m.home_team||m.homeTeam||m.home||'Home team')+'</b><small>'+safe(m.date||m.start_time||m.scheduled||'Start time unavailable')+'</small></span><span class="dpp-player-chevron">⌄</span></summary><div class="dpp-match-body"><div class="dpp-team-grid">'+[{name:m.away_team||m.awayTeam||m.away||'Away team',id:m.away_team_id||m.awayTeamId||m.away_id},{name:m.home_team||m.homeTeam||m.home||'Home team',id:m.home_team_id||m.homeTeamId||m.home_id}].map((t,j)=>'<section class="dpp-team-panel"><h4>'+safe(t.name)+'</h4><div class="dpp-team-players" data-match="'+i+'" data-side="'+j+'"><p class="dpp-stat-note">Loading team roster…</p></div></section>').join('')+'</div><div class="dpp-match-search"><label>Find a player in this matchup</label><div class="controls"><input class="field grow" data-match-search="'+i+'" placeholder="Player name"><button class="btn" data-match-search-btn="'+i+'">Search</button></div><div data-match-search-results="'+i+'"></div></div></div></details>').join('');
+   root.querySelectorAll('[data-match]').forEach((el)=>{if(el.tagName!=='DETAILS')return;el.addEventListener('toggle',()=>{if(el.open&&!el.dataset.loaded){el.dataset.loaded='1';loadMatchTeams(matches[+el.dataset.match],+el.dataset.match,sp)}})});
+   // Open first match so the player props are immediately visible on mobile.
+   const first=root.querySelector('details[data-match]');if(first){first.open=true;first.dataset.loaded='1';loadMatchTeams(matches[0],0,sp)}
+  }catch(e){root.innerHTML='<div class="dpp-props-empty dpp-error">Could not load matches: '+safe(e.message)+'</div>'+searchFallback(sp);wireFallback(sp)}
+ }
+ function searchFallback(sp){return '<div class="dpp-match-search"><label>Search player</label><div class="controls"><input class="field grow" id="propsFallbackSearch" placeholder="Player name"><button class="btn" id="propsFallbackBtn">Search</button></div><div id="propsFallbackResults"></div></div>'}
+ function wireFallback(sp){const btn=W('propsFallbackBtn');if(btn)btn.onclick=()=>searchPlayers(W('propsFallbackSearch').value.trim(),sp,W('propsFallbackResults'),null)}
+ async function loadMatchTeams(m,idx,sp){
+  const teams=[{name:m.away_team||m.awayTeam||m.away||'Away team',id:m.away_team_id||m.awayTeamId||m.away_id},{name:m.home_team||m.homeTeam||m.home||'Home team',id:m.home_team_id||m.homeTeamId||m.home_id}];
+  for(let side=0;side<teams.length;side++){
+   const box=root.querySelector('[data-match="'+idx+'"][data-side="'+side+'"]');if(!box)continue;
+   const t=teams[side];
+   if(!t.id){box.innerHTML='<p class="dpp-stat-note">Provider did not return a team ID. Use the player search below.</p>';continue}
+   try{
+    const d=await request('/api/live/roster?'+new URLSearchParams({sport:apiSport(sp),team_id:String(t.id)}));
+    const players=rows(d);
+    if(!players.length){box.innerHTML='<p class="dpp-stat-note">No roster returned for this team. Use the matchup player search below.</p>';continue}
+    box.innerHTML=players.map((p,j)=>'<details class="dpp-player-accordion" data-match-player="'+idx+'-'+side+'-'+j+'"><summary><span class="dpp-player-avatar">'+safe((p.name||p.player_name||p.full_name||'?').slice(0,1).toUpperCase())+'</span><span class="dpp-player-name"><b>'+safe(p.name||p.player_name||p.full_name||'Player')+'</b><small>'+safe(p.position||p.role||t.name)+'</small></span><span class="dpp-player-chevron">⌄</span></summary><div class="dpp-player-body"><div class="dpp-props-empty">Choose “Load last '+safe(W('propsRange').value)+'” to show the player’s categories and recent values.</div><button class="btn" data-match-player-load="'+idx+'-'+side+'-'+j+'">Load last '+safe(W('propsRange').value)+'</button><div data-match-player-stats="'+idx+'-'+side+'-'+j+'"></div></div></details>').join('');
+    box.querySelectorAll('[data-match-player-load]').forEach(btn=>btn.onclick=()=>{const j=+btn.dataset.matchPlayerLoad.split('-')[2];loadCombinedPlayerStats(players[j],sp,btn.dataset.matchPlayerLoad,t.name)});
+   }catch(e){box.innerHTML='<p class="dpp-stat-note">Roster unavailable: '+safe(e.message)+'. Use the player search below.</p>'}
+  }
+  const searchBtn=root.querySelector('[data-match-search-btn="'+idx+'"]');
+  if(searchBtn)searchBtn.onclick=()=>searchPlayers(root.querySelector('[data-match-search="'+idx+'"]').value.trim(),sp,root.querySelector('[data-match-search-results="'+idx+'"]'),m);
+  const searchInput=root.querySelector('[data-match-search="'+idx+'"]');if(searchInput)searchInput.onkeydown=e=>{if(e.key==='Enter')searchBtn.click()};
+ }
+ async function searchPlayers(q,sp,target,m){
+  if(!target)return;if(q.length<2){target.innerHTML='<p class="dpp-stat-note">Enter at least two letters of a player name.</p>';return}
+  target.innerHTML='<p class="dpp-stat-note">Searching player directory…</p>';
+  try{const d=await request('/api/live/players?'+new URLSearchParams({sport:apiSport(sp),q}));const ps=rows(d);if(!ps.length){target.innerHTML='<p class="dpp-stat-note">No player records found. Try another spelling.</p>';return}
+   target.innerHTML=ps.map((p,i)=>'<details class="dpp-player-accordion"><summary><span class="dpp-player-avatar">'+safe((p.name||p.player_name||p.full_name||'?').slice(0,1).toUpperCase())+'</span><span class="dpp-player-name"><b>'+safe(p.name||p.player_name||p.full_name||'Player')+'</b><small>'+safe(p.team||p.team_name||(m?(m.away_team||'')+' @ '+(m.home_team||''):sportLabel(sp)))+'</small></span><span class="dpp-player-chevron">⌄</span></summary><div class="dpp-player-body"><button class="btn" data-search-player-load="'+i+'">Load last '+safe(W('propsRange').value)+'</button><div data-search-player-stats="'+i+'"></div></div></details>').join('');
+   target.querySelectorAll('[data-search-player-load]').forEach(btn=>btn.onclick=()=>loadCombinedPlayerStats(ps[+btn.dataset.searchPlayerLoad],sp,btn.dataset.searchPlayerLoad,(m?(m.away_team||'Away')+' @ '+(m.home_team||'Home'):(ps[+btn.dataset.searchPlayerLoad].team||''))));
+  }catch(e){target.innerHTML='<p class="dpp-stat-note dpp-error">Player search failed: '+safe(e.message)+'</p>'}
+ }
+ async function loadCombinedPlayerStats(p,sp,key,teamName){
+  const target=root.querySelector('[data-match-player-stats="'+key+'"]')||root.querySelector('[data-search-player-stats="'+key+'"]');if(!target)return;
+  const name=p.name||p.player_name||p.full_name||p.id,count=+W('propsRange').value,id=p.id||p.player_id||p.athlete_id;
+  target.innerHTML='<p class="dpp-stat-note">Loading last '+count+' match records…</p>';
+  let saved=[],live=[],msg='';
+  try{const h=await request('/api/history?'+new URLSearchParams({sport:sp,entity_type:'player',entity_id:name,count:String(Math.min(count,20))}));saved=rows(h)}catch(e){}
+  if(id){try{const g=await request('/api/live/player-gamelog?'+new URLSearchParams({sport:apiSport(sp),player_id:id,limit:String(count)}));live=rows(g);msg=g.message||''}catch(e){msg=e.message}}
+  const categories=statNames[sp]||statNames.basketball;
+  let html='<div class="dpp-player-match-context"><b>'+safe(name)+'</b><small>'+safe(teamName||p.team||p.team_name||'Player')+' · Last '+count+' matches</small></div><div class="dpp-category-list">';
+  categories.forEach(cat=>{
+   const aliases=[cat.toLowerCase(),cat.toLowerCase().replaceAll(' ','_'),cat.toLowerCase().replaceAll('-',' ')];
+   const found=saved.filter(x=>aliases.includes(String(x.stat_name||x.stat||x.market||'').toLowerCase()));
+   const vals=found.slice(0,count).map(x=>x.stat_value??x.value??x.total);
+   html+='<details class="dpp-stat-accordion"><summary><span>'+safe(cat)+'</span><span class="dpp-stat-count">'+(vals.length?'Last '+vals.length:'No saved values')+'</span><span>⌄</span></summary><div class="dpp-stat-body">'+(vals.length?'<div class="dpp-recent-values">'+vals.map((v,j)=>'<div class="dpp-recent-value"><small>'+safe(j===0?'Most recent':j===1?'2 games ago':(j+1)+' games ago')+'</small><b>'+safe(v)+'</b></div>').join('')+'</div><p class="dpp-stat-note">Recorded history · '+safe(found[0].source||'DPP history')+'</p>':'<p class="dpp-stat-note">No verified historical values saved for this category yet.</p>')+'</div></details>';
+  });
+  html+='</div><p class="dpp-source-note">'+(saved.length?'Saved history: '+saved.length+' records.':'No saved history matched this player.')+(live.length?' Provider game-log records: '+live.length+'.':'')+(msg?' Provider note: '+safe(msg):'')+'</p>';
+  target.innerHTML=html;
+ }
+ loadPropMatches();
 }
  W('workspaceActions').querySelectorAll('[data-worktab]').forEach(b=>b.onclick=()=>activeTab(b.dataset.worktab));W('workspaceBack').onclick=()=>{closeDetail();window.scrollTo({top:W('dppWorkspace').getBoundingClientRect().top+window.scrollY,behavior:'smooth'})};W('workspaceLoad').onclick=()=>{openDetail();loadSport()};W('workspaceSport').onchange=()=>{sport=W('workspaceSport').value;matchCache=[];teamCache=[];playerCache=[];selectedPlayer=null;selectedTeam=null;tab='matches';activeTab('matches');loadSport()};document.querySelectorAll('#sportCards .sport-card').forEach(b=>b.addEventListener('click',()=>{W('workspaceSport').value=b.dataset.sport;sport=b.dataset.sport;tab='matches';activeTab('matches');openDetail();loadSport()}));
  W('workspaceLoad').click();
